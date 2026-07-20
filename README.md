@@ -16,3 +16,19 @@ The sub-questions taken from the larger question:
 2. **Geography**: Which countries and launch sites have grown the most, and what does the spread of launches look like across the global horizon?
 3. **Launch Success**: Which factors are associated with launch success? (Provider, rocket, country, mission type, orbit, year, etc.)
 4. **Prediction**: Can past launch trends predict the number of future launches? Can launch characteristics predict whether a launch succeeds?
+
+
+
+___
+
+# Technical Overview
+
+The following an overview of the technical analysis that was done for this project:
+1. Data cleanup
+2. Time analysis: plotting how the launch environment has changed over time and creating future predictions.
+3. Geographical analysis: plotting where most launches occur in the world and tracking any patterns of launches across the global horizon.
+4. Base statistics: launches over time, launches by country, launches by status, etc.
+5. Looking at success rates, orbits, and provider breakdowns.
+6. Predicition Model: building a logistic regression model to predict the success status of a launch.
+7. Looking at feature impacts from the model
+
