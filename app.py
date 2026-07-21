@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 import altair as alt
 import joblib
+import plotly.express as px
 import pydeck as pdk
 
 st.set_page_config(
@@ -81,12 +82,11 @@ if selected_provider_types:
 
 
 # Creating tabs
-base_tab, time_tab, geo_tab, success_tab, model_tab = st.tabs(
+base_tab, time_tab, geo_tab, model_tab = st.tabs(
     [
         "Base Analysis",
         "Time Series",
         "Geography",
-        "Success Rates",
         "Prediction Model",
     ]
 )
@@ -314,8 +314,6 @@ with geo_tab:
     st.pydeck_chart(deck, use_container_width=True, height=600)
 
 
-
-
     # Bar Graphs for Top Sites
     st.subheader("Top Launch Countries")
     country_counts = filtered["launch_country"].value_counts().head(15).reset_index()
@@ -357,49 +355,82 @@ with geo_tab:
 
 
 # Success Rates
-with success_tab:
+with model_tab:
     st.header("Success Rates")
 
+    # Overall Success Rate
     success_df = filtered.dropna(subset=["status_abbrev"]).copy()
     success_df["successful"] = success_df["status_abbrev"].eq("Success")
 
     success_rate = success_df["successful"].mean()
     st.metric("Overall Success Rate", f"{success_rate:.1%}" if pd.notna(success_rate) else "N/A")
 
-    st.subheader("Success Rate by Provider Type")
-    provider_success = (
-        success_df.groupby("provider_type")["successful"]
-        .mean()
-        .sort_values(ascending=False)
+
+    # Launch Success Counts by Country
+    st.subheader("Launch Success Counts by Country")
+    st.text("First we'll look at the success rates for launches of each country.")
+    country_launches = (success_df.groupby("launch_country")
+        .agg(
+            total_launches=("launch_id", "count"),
+            successful_launches=("successful", "sum"),
+        ).query("total_launches >= 10")
+        .assign(success_rate=lambda data: (data["successful_launches"] / data["total_launches"] * 100).round(2))
+        .sort_values("total_launches", ascending=False).reset_index()
     )
-    st.bar_chart(provider_success)
 
-    st.subheader("Success Rate by Launch Country")
-    country_success = (
-        success_df.groupby("launch_country")["successful"]
-        .agg(["mean", "count"])
-        .query("count >= 5")
-        .sort_values("mean", ascending=False)
-        .head(15)
-    )
-    st.bar_chart(country_success["mean"])
+    if country_launches.empty:
+        st.info("No countries have at least 10 launches for the selected filters.")
+    else:
+        country_launches_long = country_launches.melt(
+            id_vars=["launch_country", "success_rate"],
+            value_vars=["total_launches", "successful_launches"],
+            var_name="launch_type",
+            value_name="launches",
+        )
 
-# --------------------------------------------------------------------------------------------------------
+        country_launch_chart = px.bar(
+            country_launches_long,
+            x="launch_country",
+            y="launches",
+            color="launch_type",
+            barmode="group",
+            title="Total Launches",
+            labels={
+                "launch_country": "Country",
+                "launches": "Number of Launches",
+                "launch_type": "Launch Type",
+                "success_rate": "Success Rate",
+            },
+            category_orders={
+                "launch_country": country_launches["launch_country"].tolist(),
+                "launch_type": ["total_launches", "successful_launches"],
+            },
+            color_discrete_map={
+                "total_launches": "#4c78a8",
+                "successful_launches": "#f58518",
+            },
+            hover_data={"success_rate": ":.2f"},
+        )
+        country_launch_chart.update_layout(xaxis_tickangle=-45)
 
-# Model Analysis
-@st.cache_resource
-def load_success_model():
-    model = joblib.load("../artifacts/success_model_pipeline.joblib")
-    features = joblib.load("../success_model_features.joblib")
-    return model, features
+        st.plotly_chart(country_launch_chart, use_container_width=True)
+        st.dataframe(country_launches, use_container_width=True, hide_index=True)
+
+    st.text('The US has the most amount of launches, but their success rate is not the highest.')
 
 
 
-with model_tab:
+    # Model Analysis
+    @st.cache_resource
+    def load_success_model():
+        model = joblib.load("../artifacts/success_model_pipeline.joblib")
+        features = joblib.load("../success_model_features.joblib")
+        return model, features
+
+
     st.header("Prediction Model")
     st.write(
-        "Use this tab for model outputs from your notebook: accuracy, confusion matrix, "
-        "feature impacts, and example predictions."
+        ""
     )
 
     st.subheader("Suggested Model Inputs")
