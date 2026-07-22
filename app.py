@@ -4,6 +4,7 @@ import altair as alt
 import joblib
 import plotly.express as px
 import pydeck as pdk
+import ast
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
 
@@ -355,8 +356,8 @@ with geo_tab:
 
 # --------------------------------------------------------------------------------------------------------
 
-
 # Success Rates
+
 with model_tab:
     st.header("Success Rates")
 
@@ -423,8 +424,10 @@ with model_tab:
 
     st.divider()
 
+# --------------------------------------------------------------------------------------------------------
 
     # Model Analysis
+
     @st.cache_resource
     def load_success_model():
         model = joblib.load("artifacts/success_model_pipeline.joblib")
@@ -475,9 +478,10 @@ with model_tab:
     )
 
 
-
+# --------------------------------------------------------------------------------------------------------
 
     # List of Feature Importances
+
     st.subheader("What Predicts Success?")
     st.caption(
         "Positive coefficients push the model toward predicting success. Negative coefficients push it toward predicting failure. These are associations in the training data, not proof of direct causes."
@@ -536,13 +540,14 @@ with model_tab:
     st.write("""Positive predictors for successful launches include launch provider ULA, launches destined for MEO, and providers with more launch attempts in that year.
              Specific rockets being named for having a negative impact should be taken with caution, as those values likely are rare and are impacting the data greatly.""")
     
-
-
+# --------------------------------------------------------------------------------------------------------
+    
+    # Model Metrics
+    
     st.divider()
 
     st.subheader("Predicting Success")
 
-    # Model Metrics
     @st.cache_data
     def load_success_model_data():
         return pd.read_csv("data/success_model_cleaned.csv")
@@ -552,26 +557,26 @@ with model_tab:
     model, features = load_success_model()
     
     feature_cols = [
-    "launch_provider",
-    "provider_type",
-    "rocket_family",
-    "rocket_full_name",
-    "mission_type",
-    "orbit_abbrev",
-    "launch_country",
-    "launch_location",
-    "launch_pad",
-    "date_precision",
-    "year",
-    "provider_attempt_number",
-    "pad_attempt_number",
-    "location_attempt_number",
-    "yearly_provider_attempt_number",
-    "yearly_pad_attempt_number",
-    "yearly_location_attempt_number",
-    "pad_total_launch_count",
-    "pad_orbital_attempt_count",
-    "location_total_launch_count",
+        "launch_provider",
+        "provider_type",
+        "rocket_family",
+        "rocket_full_name",
+        "mission_type",
+        "orbit_abbrev",
+        "launch_country",
+        "launch_location",
+        "launch_pad",
+        "date_precision",
+        "year",
+        "provider_attempt_number",
+        "pad_attempt_number",
+        "location_attempt_number",
+        "yearly_provider_attempt_number",
+        "yearly_pad_attempt_number",
+        "yearly_location_attempt_number",
+        "pad_total_launch_count",
+        "pad_orbital_attempt_count",
+        "location_total_launch_count",
 ]
 
     X = model_df[feature_cols]
@@ -607,4 +612,140 @@ with model_tab:
 
     st.dataframe(confusion)
 
+    st.text("""The largest problem encountered with this dataset is that the target to predict (launch success) is too small to create an accurate prediciton.
+            
+While the model can confidently say that a launch will succeed, the model fails to predict the actual failures because there is too little data to work off of, as shown by the low failure recall value.
+""")
+
+# --------------------------------------------------------------------------------------------------------
+
+    # Model tester
+
     st.divider()
+
+    st.subheader("Test the Success Model")
+
+    model, features = load_success_model()
+    model_df = load_success_model_data()
+
+
+    # Cleaning rocket_family
+    def parse_rocket_family(value):
+        if pd.isna(value) or value == "[]":
+            return {"name": "Unknown", "id": "Unknown"}
+        
+        try:
+            parsed = ast.literal_eval(value)
+
+            if isinstance(parsed, list) and len(parsed) > 0:
+                item = parsed[0]
+                return {"name": item.get("name", "Unknown"), "id": item.get("id", "Unknown")}
+            
+            if isinstance(parsed, dict):
+                return {"name": parsed.get("name", "Unknown"), "id": parsed.get("id", "Unknown")}
+            
+        except (ValueError, SyntaxError):
+            pass
+
+        return {"name": str(value), "id": "Unknown"}
+    
+    def format_rocket_family(value):
+        parsed = parse_rocket_family(value)
+
+        if parsed["id"] == "Unknown":
+            return parsed['name']
+        
+        return f"{parsed['name']} (ID: {parsed['id']})"
+
+
+    # Creatring dropdown options
+    launch_provider = st.selectbox(
+        "Launch Provider",
+        sorted(model_df['launch_provider'].dropna().unique())
+    )
+
+    mission_type = st.selectbox(
+        "Mission Type",
+        sorted(model_df['mission_type'].dropna().unique())
+    )
+
+    orbit_abbrev = st.selectbox(
+        "Orbit",
+        sorted(model_df['orbit_abbrev'].dropna().unique())
+    )
+
+    launch_country = st.selectbox(
+        "Launch Country",
+        sorted(model_df['launch_country'].dropna().unique())
+    )
+
+    rocket_family_options = sorted(model_df['rocket_family'].dropna().unique(), key=format_rocket_family)
+
+    rocket_family = st.selectbox(
+        "Rocket Family", rocket_family_options, format_func=format_rocket_family
+    )
+
+    yearly_provider_attempt_number = st.slider(
+        "Provider Launch Attempts This Year",
+        min_value=0,
+        max_value=int(model_df['yearly_provider_attempt_number'].max()),
+        value=int(model_df['yearly_provider_attempt_number'].median())
+    )
+
+    # Defining columns
+    categorical_features = [
+        "launch_provider",
+        "provider_type",
+        "rocket_family",
+        "rocket_full_name",
+        "mission_type",
+        "orbit_abbrev",
+        "launch_country",
+        "launch_location",
+        "launch_pad",
+        "date_precision",
+    ]
+
+    numeric_features = [
+        "year",
+        "provider_attempt_number",
+        "pad_attempt_number",
+        "location_attempt_number",
+        "yearly_provider_attempt_number",
+        "yearly_pad_attempt_number",
+        "yearly_location_attempt_number",
+        "pad_total_launch_count",
+        "pad_orbital_attempt_count",
+        "location_total_launch_count",
+    ]
+
+    # Creating default values
+    default_input = {}
+
+    for col in categorical_features:
+        default_input[col] = model_df[col].fillna("Unknown").mode()[0]
+
+    for col in numeric_features:
+        numeric_col = pd.to_numeric(model_df[col], errors="coerce")
+        default_input[col] = numeric_col.median()
+    
+    # Overwrite use controlled features
+    default_input['launch_provider'] = launch_provider
+    default_input["mission_type"] = mission_type
+    default_input["orbit_abbrev"] = orbit_abbrev
+    default_input["rocket_family"] = rocket_family
+    default_input["yearly_provider_attempt_number"] = yearly_provider_attempt_number
+
+    user_input = pd.DataFrame([default_input])
+
+    # Predict
+    if st.button("Predict Success"):
+        prediction = model.predict(user_input)[0]
+        probability = model.predict_proba(user_input)[0][1]
+
+        st.metric("Predicted Success Probability", f"{probability:.1%}")
+
+        if prediction == 1:
+            st.success("The model predicts this launch is likely to succeed.")
+        else:
+            st.warning("The model predicts this launch may have higher failure risk.")
