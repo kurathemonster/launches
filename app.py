@@ -4,6 +4,8 @@ import altair as alt
 import joblib
 import plotly.express as px
 import pydeck as pdk
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
+from sklearn.model_selection import train_test_split
 
 st.set_page_config(
     page_title="Commercial Space Launches",
@@ -368,7 +370,7 @@ with model_tab:
 
     # Launch Success Counts by Country
     st.subheader("Launch Success Counts by Country")
-    st.text("First we'll look at the success rates for launches of each country.")
+    st.caption("First we'll look at the success rates for launches of each country.")
     country_launches = (success_df.groupby("launch_country")
         .agg(
             total_launches=("launch_id", "count"),
@@ -416,31 +418,193 @@ with model_tab:
         st.plotly_chart(country_launch_chart, use_container_width=True)
         st.dataframe(country_launches, use_container_width=True, hide_index=True)
 
-    st.text('The US has the most amount of launches, but their success rate is not the highest.')
+    st.text('The US has the most amount of launches, but their success rate is not the highest. The country with the highest success rate is Russia.')
 
+
+    st.divider()
 
 
     # Model Analysis
     @st.cache_resource
     def load_success_model():
-        model = joblib.load("../artifacts/success_model_pipeline.joblib")
-        features = joblib.load("../success_model_features.joblib")
+        model = joblib.load("artifacts/success_model_pipeline.joblib")
+        features = joblib.load("artifacts/success_model_features.joblib")
         return model, features
+
+    @st.cache_data
+    def get_feature_impacts():
+        model, _ = load_success_model()
+        feature_names = model.named_steps["preprocessor"].get_feature_names_out()
+        coefficients = model.named_steps["classifier"].coef_[0]
+
+        feature_impacts = pd.DataFrame(
+            {
+                "feature": feature_names,
+                "coefficient": coefficients,
+            }
+        )
+        feature_impacts["abs_coefficient"] = feature_impacts["coefficient"].abs()
+        feature_impacts["direction"] = feature_impacts["coefficient"].apply(
+            lambda value: "Predicts Success" if value > 0 else "Predicts Failure"
+        )
+
+        readable_features = (
+            feature_impacts["feature"]
+            .str.replace("cat__", "", regex=False)
+            .str.replace("num__", "", regex=False)
+            .str.replace("launch_provider_", "Provider: ", regex=False)
+            .str.replace("provider_type_", "Provider Type: ", regex=False)
+            .str.replace("rocket_family_", "Rocket Family: ", regex=False)
+            .str.replace("rocket_full_name_", "Rocket: ", regex=False)
+            .str.replace("mission_type_", "Mission Type: ", regex=False)
+            .str.replace("orbit_abbrev_", "Orbit: ", regex=False)
+            .str.replace("launch_country_", "Country: ", regex=False)
+            .str.replace("launch_location_", "Location: ", regex=False)
+            .str.replace("launch_pad_", "Pad: ", regex=False)
+            .str.replace("date_precision_", "Date Precision: ", regex=False)
+            .str.replace("_", " ", regex=False)
+            .str.replace("yearly provider attempt number", "Yearly Provider Number of Attempts", regex=False)
+        )
+        feature_impacts["feature_label"] = readable_features
+        return feature_impacts.sort_values("abs_coefficient", ascending=False)
 
 
     st.header("Prediction Model")
     st.write(
-        ""
+        "This logistic regression model estimates whether a launch is likely to succeed based on launch provider, rocket, orbit, location, and launch history features."
     )
 
-    st.subheader("Suggested Model Inputs")
-    model_columns = [
-        "year",
-        "launch_provider",
-        "provider_type",
-        "rocket_name",
-        "mission_type",
-        "orbit",
-        "launch_country",
-    ]
-    st.dataframe(filtered[model_columns].head(25), use_container_width=True, hide_index=True)
+
+
+
+    # List of Feature Importances
+    st.subheader("What Predicts Success?")
+    st.caption(
+        "Positive coefficients push the model toward predicting success. Negative coefficients push it toward predicting failure. These are associations in the training data, not proof of direct causes."
+    )
+
+    feature_impacts = get_feature_impacts()
+
+    impact_view = st.radio(
+        "Feature impact view",
+        ["Strongest overall", "Success predictors", "Failure predictors"],
+        horizontal=True,
+    )
+
+    if impact_view == "Success predictors":
+        chart_data = feature_impacts[feature_impacts["coefficient"] > 0].head(20)
+    elif impact_view == "Failure predictors":
+        chart_data = feature_impacts[feature_impacts["coefficient"] < 0].head(20)
+    else:
+        chart_data = feature_impacts.head(20)
+
+    chart_data = chart_data.sort_values("coefficient")
+
+    impact_chart = px.bar(
+        chart_data,
+        x="coefficient",
+        y="feature_label",
+        color="direction",
+        orientation="h",
+        title="Top Logistic Regression Feature Impacts",
+        labels={
+            "coefficient": "Model Coefficient",
+            "feature_label": "Feature",
+            "direction": "Direction",
+            "abs_coefficient": "Impact Size",
+        },
+        color_discrete_map={
+            "Predicts Success": "#2a9d8f",
+            "Predicts Failure": "#e76f51",
+        },
+        hover_data={
+            "feature": True,
+            "abs_coefficient": ":.3f",
+            "feature_label": False,
+            "direction": True,
+        },
+    )
+    impact_chart.update_layout(
+        height=650,
+        yaxis_title=None,
+        legend_title_text="Model Direction",
+    )
+    st.plotly_chart(impact_chart, use_container_width=True)
+
+    st.write("""Test flights and GSTO have the highest negative impact on flight success.
+            Geostationary Transfer Orbit (GTO) is typically used as an intermediate orbit for satellites destined for GEO.""")
+    st.write("""Positive predictors for successful launches include launch provider ULA, launches destined for MEO, and providers with more launch attempts in that year.
+             Specific rockets being named for having a negative impact should be taken with caution, as those values likely are rare and are impacting the data greatly.""")
+    
+
+
+    st.divider()
+
+    st.subheader("Predicting Success")
+
+    # Model Metrics
+    @st.cache_data
+    def load_success_model_data():
+        return pd.read_csv("data/success_model_cleaned.csv")
+    
+    model_df = load_success_model_data()
+
+    model, features = load_success_model()
+    
+    feature_cols = [
+    "launch_provider",
+    "provider_type",
+    "rocket_family",
+    "rocket_full_name",
+    "mission_type",
+    "orbit_abbrev",
+    "launch_country",
+    "launch_location",
+    "launch_pad",
+    "date_precision",
+    "year",
+    "provider_attempt_number",
+    "pad_attempt_number",
+    "location_attempt_number",
+    "yearly_provider_attempt_number",
+    "yearly_pad_attempt_number",
+    "yearly_location_attempt_number",
+    "pad_total_launch_count",
+    "pad_orbital_attempt_count",
+    "location_total_launch_count",
+]
+
+    X = model_df[feature_cols]
+    y = model_df['success']
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    y_pred = model.predict(X_test)
+
+    # Metrics
+    accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred, zero_division=0)
+    recall = recall_score(y_test, y_pred, zero_division=0)
+    f1 = f1_score(y_test, y_pred, zero_division=0)
+    failure_recall = recall_score(y_test, y_pred, pos_label=0, zero_division=0)
+
+    # Display metrics
+    col1, col2, col3, col4, col5 = st.columns(5)
+
+    col1.metric("Accuracy", f"{accuracy:.1%}")
+    col2.metric("Precision", f"{precision:.1%}")
+    col3.metric("Success Recall", f"{recall:.1%}")
+    col4.metric("F1 Score", f"{f1:.1%}")
+    col5.metric("Failure Recall", f"{failure_recall:.1%}")
+    
+
+    matrix = confusion_matrix(y_test, y_pred, labels=[1, 0])
+
+    confusion = pd.DataFrame(
+        matrix,
+        index=["Actual Success", "Actual Failure"],
+        columns=["Predicted Success", "Predicted Failure"],
+    )
+
+    st.dataframe(confusion)
+
+    st.divider()
