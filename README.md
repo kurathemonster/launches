@@ -1,7 +1,9 @@
 
 # The Commercial Space Boom: Predicting Launch Growth and Success in the Modern Space Industry
 
-[Description]
+*Space is the way of the future.*
+
+Commercial space launches are no longer rare government milestones. Since 2010, they have become a fast-growing global industry shaped by geography, private providers, rocket systems, and mission goals. Understanding these patterns matters because they help show not only where the space economy is growing, but also what factors may influence future launch success.
 
 The data used for this analysis has been taken from the [Launch Library 2](https://thespacedevs.com/llapi), using their Launches dataset V.2.3.0.
 
