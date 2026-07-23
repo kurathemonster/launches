@@ -224,10 +224,21 @@ with time_tab:
     forecast['yhat'] = forecast['yhat'].clip(lower=0)
     forecast['trend_lower'] = forecast['trend_lower'].clip(lower=0)
     forecast['trend'] = forecast['trend'].clip(lower=0)
+    actual["series"] = "Actual Launches"
+    forecast["series"] = "Predicted Trend"
     year_axis = alt.X(
         "ds:T",
         title="Year",
         axis=alt.Axis(format="%Y", tickCount="year"),
+    )
+    forecast_color = alt.Color(
+        "series:N",
+        title="",
+        scale=alt.Scale(
+            domain=["Actual Launches", "Predicted Trend"],
+            range=["#ff376f", "#4c78a8"],
+        ),
+        legend=alt.Legend(orient="top"),
     )
 
     actual_points = (
@@ -236,7 +247,7 @@ with time_tab:
         .encode(
             x=year_axis,
             y=alt.Y('y:Q', title='Launches'),
-            color=alt.value("#ff376f"),
+            color=forecast_color,
             tooltip=[
                 alt.Tooltip('ds:T', title='Month'),
                 alt.Tooltip('y:Q', title='Actual Launches')
@@ -260,6 +271,7 @@ with time_tab:
         .encode(
             x=year_axis,
             y=alt.Y('trend:Q', title='Launches'),
+            color=forecast_color,
             tooltip=[
                 alt.Tooltip('ds:T', title='Date'),
                 alt.Tooltip('trend:Q', title='Predicted Trend', format='.1f'),
@@ -729,7 +741,16 @@ with model_tab:
         sorted(model_df['launch_country'].dropna().unique())
     )
 
-    rocket_family_options = sorted(model_df['rocket_family'].dropna().unique(), key=format_rocket_family)
+    rocket_family_options_by_label = {}
+    for value in model_df["rocket_family"].dropna().unique():
+        label = format_rocket_family(value)
+        if label not in rocket_family_options_by_label:
+            rocket_family_options_by_label[label] = value
+
+    rocket_family_options = [
+        rocket_family_options_by_label[label]
+        for label in sorted(rocket_family_options_by_label)
+    ]
 
     rocket_family = st.selectbox(
         "Rocket Family", rocket_family_options, format_func=format_rocket_family
