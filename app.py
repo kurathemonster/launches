@@ -5,6 +5,7 @@ import joblib
 import plotly.express as px
 import pydeck as pdk
 import ast
+from PIL import Image
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
 
@@ -44,7 +45,9 @@ def load_monthly_actuals():
 
 # Main Settings
 st.title("The Commercial Space Boom")
-st.text("Predicting launch growth and success in the modern space industry")
+st.text("Predicting Launch Growth and Success in the Modern Space Industry")
+st.caption('How have geography, launch provider, rocket type, and mission characteristics shaped global launch growth since 2010, and how well can those patterns predict future launch volume and launch success?')
+
 
 # Setting sidebar
 st.sidebar.header("Filters")
@@ -85,12 +88,13 @@ if selected_provider_types:
 
 
 # Creating tabs
-base_tab, time_tab, geo_tab, model_tab = st.tabs(
+base_tab, time_tab, geo_tab, model_tab, summary_tab = st.tabs(
     [
         "Base Analysis",
         "Time Series",
         "Geography",
         "Prediction Model",
+        "Summary",
     ]
 )
 
@@ -100,6 +104,22 @@ base_tab, time_tab, geo_tab, model_tab = st.tabs(
 
 # Base Analysis
 with base_tab:
+    st.write("*Space is the way of the future.*")
+    st.write(
+        "Commercial space launches are no longer rare government milestones. "
+        "Since 2010, they have become a fast-growing global industry shaped by "
+        "geography, private providers, rocket systems, and mission goals. "
+        "Understanding these patterns matters because they help show not only "
+        "where the space economy is growing, but also what factors may influence "
+        "future launch success."
+    )
+
+    img = Image.open("img/spaceship.jpg")
+    st.image(img)
+
+    st.divider()
+
+
     st.header("Overview")
 
     metric_1, metric_2, metric_3, metric_4 = st.columns(4)
@@ -149,6 +169,11 @@ with base_tab:
     st.subheader("Launch Data")
     st.dataframe(filtered[display_cols], use_container_width=True, hide_index=True)
 
+# Add provider experience vs. launch success
+# launch volume over time by provider type
+# Add top launch providers
+
+
 
 # --------------------------------------------------------------------------------------------------------
 
@@ -185,19 +210,31 @@ with time_tab:
 
     st.altair_chart(year_chart, use_container_width=True)
 
-    st.text('There is a steady increase in launches over the years. No particular seasonality seen in the data.')
-    st.text('Note: This graph counts the 163 planned launches remaining in 2026.')
+    st.text('There is a steady increase in launches over the years. No particular pattern for seasonality seen in the data.')
+    st.write('*Note: This graph counts the 163 planned launches remaining in 2026.*')
 
+
+    st.divider()
 
     # Predicted Launches (prophet graph)
     actual = load_monthly_actuals()
     forecast = load_prophet_forecast()
     
+    forecast['yhat_lower'] = forecast['yhat_lower'].clip(lower=0)
+    forecast['yhat'] = forecast['yhat'].clip(lower=0)
+    forecast['trend_lower'] = forecast['trend_lower'].clip(lower=0)
+    forecast['trend'] = forecast['trend'].clip(lower=0)
+    year_axis = alt.X(
+        "ds:T",
+        title="Year",
+        axis=alt.Axis(format="%Y", tickCount="year"),
+    )
+
     actual_points = (
         alt.Chart(actual)
         .mark_circle(size=45)
         .encode(
-            x=alt.X('ds:T', title='Year'),
+            x=year_axis,
             y=alt.Y('y:Q', title='Launches'),
             color=alt.value("#ff376f"),
             tooltip=[
@@ -211,9 +248,9 @@ with time_tab:
         alt.Chart(forecast)
         .mark_area(opacity=0.25)
         .encode(
-            x=alt.X('ds:T', title='Year'),
-            y=alt.Y('yhat_lower:Q', title='Launches'),
-            y2='yhat_upper:Q',
+            x=year_axis,
+            y=alt.Y('trend_lower:Q', title='Launches'),
+            y2='trend_upper:Q',
         )
     )
 
@@ -221,23 +258,27 @@ with time_tab:
         alt.Chart(forecast)
         .mark_line()
         .encode(
-            x=alt.X("ds:T", title="Year"),
-            y=alt.Y('yhat:Q', title='Launches'),
+            x=year_axis,
+            y=alt.Y('trend:Q', title='Launches'),
             tooltip=[
                 alt.Tooltip('ds:T', title='Date'),
-                alt.Tooltip('yhat:Q', title='Prediction', format='.1f'),
-                alt.Tooltip('yhat_lower:Q', title='Lower Bound', format='.1f'),
-                alt.Tooltip('yhat_upper:Q', title='Upper Bound', format='.1f')
+                alt.Tooltip('trend:Q', title='Predicted Trend', format='.1f'),
+                alt.Tooltip('trend_lower:Q', title='Lower Bound', format='.1f'),
+                alt.Tooltip('trend_upper:Q', title='Upper Bound', format='.1f')
             ],
         )
     )
     
-    st.subheader("Predicted Launches")
+    st.subheader("Predicted Launch Trend")
     
     chart = (forecast_band + forecast_line + actual_points).properties(height=500)
     st.altair_chart(chart, use_container_width=True)
 
-    st.text('THe number of launches are expected to increase in the coming years.')
+    st.write(
+        "This plot shows launch counts against Prophet's long-term trend "
+        "forecast. The values vary, but the main pattern is that "
+        "launch volume is expected to increase in the coming years."
+    )
 
 
 # --------------------------------------------------------------------------------------------------------
@@ -247,7 +288,7 @@ with time_tab:
 
 with geo_tab:
     st.header("Geography")
-    st.text('This section takes a look at the top sites and area of the world where launches occur.')
+    st.text('This section takes a look at the top sites and areas of the world where launches occur.')
 
 
     # First Geographical Map - Launch Pad Locations
@@ -361,12 +402,17 @@ with geo_tab:
 with model_tab:
     st.header("Success Rates")
 
-    # Overall Success Rate
-    success_df = filtered.dropna(subset=["status_abbrev"]).copy()
+    # Completed Launch Success Rate
+    success_df = filtered[
+        filtered["status_abbrev"].isin(["Success", "Failure", "Partial Failure"])
+    ].copy()
     success_df["successful"] = success_df["status_abbrev"].eq("Success")
 
-    success_rate = success_df["successful"].mean()
-    st.metric("Overall Success Rate", f"{success_rate:.1%}" if pd.notna(success_rate) else "N/A")
+    completed_success_rate = success_df["successful"].mean()
+    st.metric(
+        "Completed Launches Success Rate",
+        f"{completed_success_rate:.1%}" if pd.notna(completed_success_rate) else "N/A",
+    )
 
 
     # Launch Success Counts by Country
@@ -536,7 +582,8 @@ with model_tab:
     st.plotly_chart(impact_chart, use_container_width=True)
 
     st.write("""Test flights and GSTO have the highest negative impact on flight success.
-            Geostationary Transfer Orbit (GTO) is typically used as an intermediate orbit for satellites destined for GEO.""")
+            Geostationary Transfer Orbit (GTO) is typically used as an intermediate orbit for satellites destined for GEO. These missions are typically more demanding in power and precision, which could result in a higher failure rate.""")
+    
     st.write("""Positive predictors for successful launches include launch provider ULA, launches destined for MEO, and providers with more launch attempts in that year.
              Specific rockets being named for having a negative impact should be taken with caution, as those values likely are rare and are impacting the data greatly.""")
     
@@ -612,10 +659,13 @@ with model_tab:
 
     st.dataframe(confusion)
 
-    st.text("""The largest problem encountered with this dataset is that the target to predict (launch success) is too small to create an accurate prediciton.
-            
-While the model can confidently say that a launch will succeed, the model fails to predict the actual failures because there is too little data to work off of, as shown by the low failure recall value.
-""")
+    st.write(
+        "The largest problem encountered with this dataset is that the target to "
+        "predict launch success is too small to create an accurate prediction. "
+        "While the model can confidently say that a launch will succeed, the model "
+        "fails to predict the actual failures because there is too little data to "
+        "work off of, as shown by the low failure recall value."
+    )
 
 # --------------------------------------------------------------------------------------------------------
 
@@ -749,3 +799,69 @@ While the model can confidently say that a launch will succeed, the model fails 
             st.success("The model predicts this launch is likely to succeed.")
         else:
             st.warning("The model predicts this launch may have higher failure risk.")
+
+
+# --------------------------------------------------------------------------------------------------------
+
+# Summary
+
+with summary_tab:
+    st.write(
+        "As space launches become more frequent and commercially driven, "
+        "understanding the patterns behind them becomes increasingly important. "
+        "The data shows that while launch success depends on complex and "
+        "sometimes rare factors, the overall direction of the industry is "
+        "unmistakable: more launches, more competition, continued growth."
+    )
+
+    st.subheader("Summary Snapshot")
+
+    completed_filtered = filtered[
+        filtered["status_abbrev"].isin(["Success", "Failure", "Partial Failure"])
+    ].copy()
+    completed_success_rate = completed_filtered["status_abbrev"].eq("Success").mean()
+    top_country = filtered["launch_country"].mode()
+    top_provider = filtered["launch_provider"].mode()
+    summary_launches_by_year = filtered.groupby("year").size().reset_index(name="launches")
+
+    if (
+        len(summary_launches_by_year) > 1
+        and summary_launches_by_year["launches"].iloc[0] > 0
+    ):
+        growth_rate = (
+            (
+                summary_launches_by_year["launches"].iloc[-1]
+                - summary_launches_by_year["launches"].iloc[0]
+            )
+            / summary_launches_by_year["launches"].iloc[0]
+        )
+        growth_label = f"{growth_rate:.0%}"
+    else:
+        growth_label = "N/A"
+
+    summary_1, summary_2, summary_3, summary_4 = st.columns(4)
+    summary_1.metric("Launch Growth", growth_label)
+    summary_2.metric(
+        "Completed Success Rate",
+        f"{completed_success_rate:.1%}" if pd.notna(completed_success_rate) else "N/A",
+    )
+    summary_3.metric("Top Country", top_country.iloc[0] if not top_country.empty else "N/A")
+    summary_4.metric("Top Provider", top_provider.iloc[0] if not top_provider.empty else "N/A")
+
+    snapshot_chart = (
+        alt.Chart(summary_launches_by_year)
+        .mark_bar()
+        .encode(
+            x=alt.X("year:O", title="Year", axis=alt.Axis(labelAngle=0)),
+            y=alt.Y("launches:Q", title="Launches"),
+            tooltip=[
+                alt.Tooltip("year:O", title="Year"),
+                alt.Tooltip("launches:Q", title="Launches"),
+            ],
+        )
+        .properties(height=250)
+    )
+    st.altair_chart(snapshot_chart, use_container_width=True)
+
+    img = Image.open("img/spaceship.jpg")
+    st.image(img)

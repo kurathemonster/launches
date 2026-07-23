@@ -12,7 +12,7 @@ The data used for this analysis has been taken from the [Launch Library 2](https
 
 The sub-questions taken from the larger question:
 
-1. **Time Series**: How has the number of launches changed each year from 2019-2026, and what does that trend suggest about future launch outcomes?
+1. **Time Series**: How has the number of launches changed each year from 2010-2026, and what does that trend suggest about future launch outcomes?
 2. **Geography**: Which countries and launch sites have grown the most, and what does the spread of launches look like across the global horizon?
 3. **Launch Success**: Which factors are associated with launch success? (Provider, rocket, country, mission type, orbit, year, etc.)
 4. **Prediction**: Can past launch trends predict the number of future launches? Can launch characteristics predict whether a launch succeeds?
@@ -32,3 +32,6 @@ The following an overview of the technical analysis that was done for this proje
 6. Predicition Model: building a logistic regression model to predict the success status of a launch.
 7. Looking at feature impacts from the model
 
+___
+
+Please use app.py on Streamlit to view the analysis presentation.
