@@ -34,4 +34,4 @@ The following an overview of the technical analysis that was done for this proje
 
 ___
 
-Please use app.py on Streamlit to view the analysis presentation.
+See the full analysis on https://commercialspaceboom.streamlit.app/
