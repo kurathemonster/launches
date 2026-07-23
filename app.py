@@ -865,3 +865,10 @@ with summary_tab:
 
     img = Image.open("img/spaceship.jpg")
     st.image(img)
+
+
+
+st.divider()
+
+st.caption("GitHub: https://github.com/kurathemonster/launches")
+st.caption("Analysis by *kurathemonster*")
